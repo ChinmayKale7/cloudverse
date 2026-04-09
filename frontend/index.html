@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Scholarship Fund Allocation Dashboard</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="bg-orb bg-orb--one"></div>
+    <div class="bg-orb bg-orb--two"></div>
+    <div class="bg-orb bg-orb--three"></div>
+
+    <header class="hero">
+      <div class="hero__eyebrow">Cloudverse Scholarships</div>
+      <h1>Scholarship Fund Allocation Dashboard</h1>
+      <p>Live view of applications, ranking, and fund usage with instant allocation controls.</p>
+      <div class="hero__meta">
+        <span class="pill">Realtime scoring</span>
+        <span class="pill">Category caps enforced</span>
+        <span class="pill">Budget-aware awards</span>
+      </div>
+    </header>
+
+    <section class="dashboard" id="dashboard">
+      <div class="card">
+        <h2>Fund Utilization</h2>
+        <div class="metrics" id="fundMetrics"></div>
+        <button id="allocateBtn">Run Allocation</button>
+        <button class="secondary" id="refreshBtn">Refresh</button>
+      </div>
+
+      <div class="card">
+        <h2>Selection Rules</h2>
+        <div id="rulesCard" class="rules">Loading rules...</div>
+      </div>
+
+      <div class="card">
+        <h2>Submit Application</h2>
+        <form id="applicationForm">
+          <input name="applicant_id" placeholder="Applicant ID (min 3 chars)" minlength="3" required />
+          <input name="name" placeholder="Full name" required />
+          <input type="number" name="income" placeholder="Annual income" min="0" required />
+          <input type="number" name="cgpa" placeholder="CGPA (0-10)" min="0" max="10" step="0.01" required />
+          <select name="category" required>
+            <option value="general">General</option>
+            <option value="obc">OBC</option>
+            <option value="sc">SC</option>
+            <option value="st">ST</option>
+            <option value="ews">EWS</option>
+          </select>
+          <label class="file-label">
+            Income Certificate (required)
+            <input type="file" name="income_certificate" accept=".pdf,.jpg,.jpeg,.png" required />
+          </label>
+          <label class="file-label" id="casteLabel">
+            Caste Certificate (required for non-General)
+            <input type="file" name="caste_certificate" accept=".pdf,.jpg,.jpeg,.png" />
+          </label>
+          <button type="submit">Submit</button>
+        </form>
+        <p id="formStatus" class="status"></p>
+        <div class="output-grid">
+          <div>
+            <h3>Last Request</h3>
+            <pre id="lastRequest" class="code-block">No requests yet.</pre>
+          </div>
+          <div>
+            <h3>Last Response</h3>
+            <pre id="lastResponse" class="code-block">No responses yet.</pre>
+          </div>
+        </div>
+        <div class="activity">
+          <h3>Activity Log</h3>
+          <ul id="activityLog"></ul>
+        </div>
+      </div>
+
+      <div class="card full">
+        <h2>Ranking Leaderboard</h2>
+        <table class="table" id="leaderboardTable"></table>
+      </div>
+
+      <div class="card full">
+        <h2>Selected Candidates</h2>
+        <table class="table" id="selectedTable"></table>
+      </div>
+    </section>
+
+    <script src="config.js"></script>
+    <script>
+      const API_BASE = window.CONFIG?.API_BASE_URL || "http://localhost:8000";
+      const fundMetrics = document.getElementById("fundMetrics");
+      const leaderboardTable = document.getElementById("leaderboardTable");
+      const selectedTable = document.getElementById("selectedTable");
+      const allocateBtn = document.getElementById("allocateBtn");
+      const refreshBtn = document.getElementById("refreshBtn");
+      const applicationForm = document.getElementById("applicationForm");
+      const formStatus = document.getElementById("formStatus");
+      const lastRequest = document.getElementById("lastRequest");
+      const lastResponse = document.getElementById("lastResponse");
+      const activityLog = document.getElementById("activityLog");
+      const rulesCard = document.getElementById("rulesCard");
+      const casteLabel = document.getElementById("casteLabel");
+      let rulesCache = null;
+
+      const addActivity = (message) => {
+        const item = document.createElement("li");
+        item.textContent = `${new Date().toLocaleTimeString()} — ${message}`;
+        activityLog.prepend(item);
+        if (activityLog.children.length > 6) {
+          activityLog.removeChild(activityLog.lastChild);
+        }
+      };
+
+      const formatJson = (value) => JSON.stringify(value, null, 2);
+
+      const renderTable = (target, rows) => {
+        if (!rows.length) {
+          target.innerHTML = "<tr><td>No data yet</td></tr>";
+          return;
+        }
+        const header = "<tr><th>Applicant</th><th>Category</th><th>Score</th><th>Status</th><th>Amount</th></tr>";
+        const body = rows
+          .map(
+            (row) =>
+              `<tr><td>${row.name}</td><td>${row.category.toUpperCase()}</td><td>${row.score}</td><td>${row.allocated ? "Selected" : "Pending"}</td><td>${row.allocated_amount}</td></tr>`
+          )
+          .join("");
+        target.innerHTML = header + body;
+      };
+
+      const renderMetrics = (budget) => {
+        const used = budget.total_budget - budget.remaining_budget;
+        const utilization = ((used / budget.total_budget) * 100).toFixed(1);
+        fundMetrics.innerHTML = `
+          <div class="metric">
+            <strong>Total Budget</strong>
+            <span>${budget.total_budget}</span>
+          </div>
+          <div class="metric">
+            <strong>Used</strong>
+            <span>${used}</span>
+          </div>
+          <div class="metric">
+            <strong>Remaining</strong>
+            <span>${budget.remaining_budget}</span>
+          </div>
+          <div class="metric">
+            <strong>Utilization</strong>
+            <span>${utilization}%</span>
+          </div>
+        `;
+      };
+
+      const loadDashboard = async () => {
+        const response = await fetch(`${API_BASE}/dashboard?limit=50`);
+        const data = await response.json();
+        renderMetrics(data.fund_utilization);
+        renderTable(leaderboardTable, data.leaderboard);
+        renderTable(selectedTable, data.selected_candidates);
+        addActivity("Dashboard refreshed");
+      };
+
+      const loadRules = async () => {
+        const response = await fetch(`${API_BASE}/rules`);
+        const data = await response.json();
+        rulesCache = data;
+        const quotas = Object.entries(data.category_quota)
+          .map(([cat, quota]) => `<li>${cat.toUpperCase()}: ${(quota * 100).toFixed(0)}% cap</li>`)
+          .join("");
+        const grants = Object.entries(data.grant_by_category)
+          .map(([cat, grant]) => `<li>${cat.toUpperCase()}: ${grant}</li>`)
+          .join("");
+        rulesCard.innerHTML = `
+          <div>
+            <strong>Category Caps</strong>
+            <ul>${quotas}</ul>
+          </div>
+          <div>
+            <strong>Grant per Category</strong>
+            <ul>${grants}</ul>
+          </div>
+          <div class="rule-note">CGPA min: ${data.cgpa_min} | Income cap: ${data.income_cap}</div>
+        `;
+        if (applicationForm.category.value === "general") {
+          casteLabel.querySelector("input").required = false;
+        } else {
+          casteLabel.querySelector("input").required = true;
+        }
+      };
+
+      allocateBtn.addEventListener("click", async () => {
+        const response = await fetch(`${API_BASE}/allocate`, { method: "POST" });
+        const data = await response.json();
+        lastRequest.textContent = formatJson({ action: "allocate" });
+        lastResponse.textContent = formatJson(data);
+        addActivity(`Allocation run: ${data.allocated_count} awarded`);
+        loadDashboard();
+      });
+
+      refreshBtn.addEventListener("click", () => loadDashboard());
+
+      applicationForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        formStatus.textContent = "";
+        const formData = new FormData(applicationForm);
+        const applicantId = formData.get("applicant_id");
+        if (!applicantId || String(applicantId).trim().length < 3) {
+          formStatus.textContent = "Applicant ID must be at least 3 characters.";
+          addActivity("Submission blocked: applicant ID too short");
+          return;
+        }
+        const cgpa = Number(formData.get("cgpa"));
+        if (!Number.isFinite(cgpa) || cgpa < (rulesCache?.cgpa_min || 8.5)) {
+          formStatus.textContent = "CGPA must be at least 8.5 to qualify.";
+          addActivity("Submission blocked: CGPA below threshold");
+          return;
+        }
+        lastRequest.textContent = formatJson(Object.fromEntries(formData.entries()));
+        try {
+          const response = await fetch(`${API_BASE}/applications`, {
+            method: "POST",
+            body: formData,
+          });
+          const body = await response.json();
+          if (!response.ok) {
+            const detail = Array.isArray(body.detail)
+              ? body.detail.map((item) => item.msg).join(", ")
+              : body.detail;
+            formStatus.textContent = detail || "Submission failed";
+            lastResponse.textContent = formatJson(body);
+            addActivity(`Submission failed: ${applicantId}`);
+            return;
+          }
+          formStatus.textContent = `Submitted ${body.name} with score ${body.score}.`;
+          lastResponse.textContent = formatJson(body);
+          addActivity(`Application submitted: ${body.applicant_id}`);
+          applicationForm.reset();
+          loadDashboard();
+        } catch (error) {
+          formStatus.textContent = "Network error.";
+          addActivity("Network error on submit");
+        }
+      });
+
+      applicationForm.category.addEventListener("change", () => {
+        if (applicationForm.category.value === "general") {
+          casteLabel.querySelector("input").required = false;
+        } else {
+          casteLabel.querySelector("input").required = true;
+        }
+      });
+
+      loadDashboard();
+      loadRules();
+      setInterval(loadDashboard, 8000);
+    </script>
+  </body>
+</html>

@@ -1,0 +1,37 @@
+[
+  {
+    "applicant_id": "A1001",
+    "name": "Riya Patel",
+    "income": 45000,
+    "cgpa": 9.1,
+    "category": "ews"
+  },
+  {
+    "applicant_id": "A1002",
+    "name": "Arjun Rao",
+    "income": 72000,
+    "cgpa": 8.8,
+    "category": "obc"
+  },
+  {
+    "applicant_id": "A1003",
+    "name": "Neha Singh",
+    "income": 32000,
+    "cgpa": 9.5,
+    "category": "sc"
+  },
+  {
+    "applicant_id": "A1004",
+    "name": "Ishaan Verma",
+    "income": 120000,
+    "cgpa": 8.2,
+    "category": "general"
+  },
+  {
+    "applicant_id": "A1005",
+    "name": "Zara Khan",
+    "income": 54000,
+    "cgpa": 8.9,
+    "category": "st"
+  }
+]
